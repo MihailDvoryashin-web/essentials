@@ -5,6 +5,7 @@ import logging
 
 from .config import Settings
 from .db import AlertStore
+from .delivery import AlertDelivery
 from .gmgn import GmgnClient
 from .image_resolver import ImageResolver
 from .service import AlertService
@@ -35,7 +36,7 @@ async def async_main() -> None:
     image_resolver = ImageResolver(settings.solana_rpc_url, settings.http_timeout_seconds)
     service = AlertService(
         GmgnClient(settings.gmgn_cli_bin, settings.gmgn_cli_timeout_seconds, settings.max_retries),
-        telegram,
+        AlertDelivery(telegram, store),
         store,
         settings.poll_interval_seconds,
         image_resolver,

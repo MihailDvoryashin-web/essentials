@@ -16,6 +16,7 @@ from .retry import with_retry
 _BARE_X = re.compile(r"^@?([A-Za-z0-9_]{1,15})$")
 _RELATIVE_X = re.compile(r"^(?:[A-Za-z0-9_]{1,15}/status/[0-9]+|i/communities/[0-9]+)$")
 ICON_ONLY_LABEL = "\u2063"
+TICKER_WORD_JOINER = "\u2060"
 logger = logging.getLogger(__name__)
 
 
@@ -72,7 +73,7 @@ class TelegramClient:
     def caption(self, token: Token) -> str:
         twitter = x_url(token.twitter)
         x_line = f'<a href="{html.escape(twitter, quote=True)}">X</a>' if twitter else "X̶"
-        display_symbol = "$" + token.symbol.lstrip("$")
+        display_symbol = "$" + TICKER_WORD_JOINER + token.symbol.lstrip("$")
         return "\n".join([
             "🧠 <b>smarts detected</b>",
             "",
@@ -129,6 +130,15 @@ class TelegramClient:
             "parse_mode": "HTML",
             "reply_markup": keyboard,
             "disable_web_page_preview": True,
+        })
+        return result.get("message_id")
+
+    async def send_second_message(self, text: str, card_message_id: int) -> int | None:
+        result = await self._call("sendMessage", json={
+            "chat_id": self.chat_id,
+            **({"message_thread_id": self.alerts_thread_id} if self.alerts_thread_id is not None else {}),
+            "text": text,
+            "reply_parameters": {"message_id": card_message_id},
         })
         return result.get("message_id")
 

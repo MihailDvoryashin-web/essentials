@@ -4,17 +4,17 @@ import asyncio
 import logging
 
 from .db import AlertStore
+from .delivery import AlertDelivery
 from .gmgn import GmgnClient
 from .image_resolver import ImageResolver
-from .telegram import TelegramClient
 
 logger = logging.getLogger(__name__)
 
 
 class AlertService:
-    def __init__(self, gmgn: GmgnClient, telegram: TelegramClient, store: AlertStore, poll_seconds: int, image_resolver: ImageResolver):
+    def __init__(self, gmgn: GmgnClient, delivery: AlertDelivery, store: AlertStore, poll_seconds: int, image_resolver: ImageResolver):
         self.gmgn = gmgn
-        self.telegram = telegram
+        self.delivery = delivery
         self.store = store
         self.poll_seconds = poll_seconds
         self.image_resolver = image_resolver
@@ -29,11 +29,10 @@ class AlertService:
             seen_in_batch.add(token.address)
             try:
                 image = await self.image_resolver.resolve(token)
-                message_id = await self.telegram.send_token(token, image)
+                await self.delivery.send_alert_bundle(token, image)
             except Exception:
                 logger.exception("Failed to alert token %s", token.address)
                 continue
-            await self.store.record(token.address, message_id)
             sent += 1
             logger.info("Alerted %s (%s)", token.address, token.symbol)
         return sent

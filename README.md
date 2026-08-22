@@ -64,3 +64,9 @@ Fetch one current Stage 1 candidate from GMGN and send one live production-forma
 ```bash
 .venv/bin/python scripts/test_live_alert.py
 ```
+
+Send two live alert bundles concurrently to verify atomic card/reply delivery without polling or SQLite state:
+
+```bash
+.venv/bin/python scripts/test_concurrent_alerts.py
+```

@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from essentials.models import Token
 from essentials.image_resolver import ResolvedImage
-from essentials.telegram import ICON_ONLY_LABEL, TelegramClient, compact_usd, x_url
+from essentials.telegram import ICON_ONLY_LABEL, TICKER_WORD_JOINER, TelegramClient, compact_usd, x_url
 
 
 def token(**overrides):
@@ -62,8 +62,14 @@ def test_caption_displays_ticker_with_exactly_one_leading_dollar():
     tg = client()
     for raw_symbol in ("SNEK", "$SNEK", "$$SNEK"):
         caption = tg.caption(token(symbol=raw_symbol))
-        assert "$SNEK - Doge2 Caesar" in caption
+        assert f"${TICKER_WORD_JOINER}SNEK - Doge2 Caesar" in caption
         assert "$$SNEK" not in caption
+
+
+def test_caption_ticker_uses_word_joiner_to_prevent_cashtag_autolink():
+    caption = client().caption(token(symbol="$SNEK"))
+    assert f"${TICKER_WORD_JOINER}SNEK" in caption
+    assert "$SNEK" not in caption
 
 
 def test_keyboard_has_no_ca_button_and_hides_missing_axiom_market():
@@ -155,3 +161,23 @@ async def test_photo_alert_uses_send_photo_caption_keyboard_and_topic():
     assert calls[0][1]["data"]["message_thread_id"] == "3"
     assert "🪙 ca - <code>CA/unsafe</code>" in calls[0][1]["data"]["caption"]
     assert "reply_markup" in calls[0][1]["data"]
+
+
+async def test_second_message_replies_to_card_in_same_topic():
+    tg = client()
+    calls = []
+
+    async def fake_call(method, **kwargs):
+        calls.append((method, kwargs))
+        return {"message_id": 13}
+
+    tg._call = fake_call
+    try:
+        assert await tg.send_second_message("second", 12) == 13
+    finally:
+        await tg.close()
+
+    method, kwargs = calls[0]
+    assert method == "sendMessage"
+    assert kwargs["json"]["message_thread_id"] == 3
+    assert kwargs["json"]["reply_parameters"] == {"message_id": 12}
