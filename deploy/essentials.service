@@ -1,0 +1,22 @@
+[Unit]
+Description=Essentials Stage 1 token alerts
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=essentials
+Group=essentials
+WorkingDirectory=/opt/essentials
+EnvironmentFile=/opt/essentials/.env
+ExecStart=/opt/essentials/.venv/bin/essentials
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/essentials/data
+
+[Install]
+WantedBy=multi-user.target
+
