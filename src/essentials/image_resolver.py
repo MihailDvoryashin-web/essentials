@@ -25,6 +25,10 @@ HTTP_HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; EssentialsBot/1.0)",
     "Accept": "application/json,image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8",
 }
+IPFS_GATEWAYS = (
+    "https://gateway.pinata.cloud/ipfs/{path}",
+    "https://dweb.link/ipfs/{path}",
+)
 
 
 @dataclass(frozen=True)
@@ -46,6 +50,35 @@ def normalize_uri(uri: str | None) -> str | None:
         return f"https://arweave.net/{path}" if path else None
     parsed = urlparse(uri)
     return uri if parsed.scheme == "https" and parsed.netloc else None
+
+
+def ipfs_path(uri: str | None) -> str | None:
+    if not isinstance(uri, str):
+        return None
+    uri = uri.strip()
+    if uri.startswith("ipfs://"):
+        path = uri[7:].lstrip("/")
+        return path[5:] if path.startswith("ipfs/") else path or None
+    parsed = urlparse(uri)
+    marker = "/ipfs/"
+    if parsed.scheme == "https" and marker in parsed.path:
+        path = parsed.path.split(marker, 1)[1].lstrip("/")
+        return path or None
+    return None
+
+
+def download_candidates(uri: str) -> list[str]:
+    original = normalize_uri(uri)
+    if not original:
+        return []
+    candidates = [original]
+    path = ipfs_path(uri)
+    if path:
+        for pattern in IPFS_GATEWAYS:
+            gateway_url = pattern.format(path=path)
+            if gateway_url not in candidates:
+                candidates.append(gateway_url)
+    return candidates
 
 
 def _borsh_string(data: bytes, offset: int) -> tuple[str, int]:
@@ -153,7 +186,7 @@ class ImageResolver:
         metadata_url = normalize_uri(metadata_uri)
         if not metadata_url:
             return None
-        metadata_bytes, _ = await self._download(metadata_url, MAX_METADATA_BYTES)
+        metadata_bytes, _ = await self._download_uri(metadata_url, MAX_METADATA_BYTES, "metadata")
         image_uri = normalize_uri(image_uri_from_json(json.loads(metadata_bytes)))
         return await self._download_image(image_uri, "metadata") if image_uri else None
 
@@ -177,7 +210,7 @@ class ImageResolver:
         metadata_uri = normalize_uri(metadata_uri_from_account(base64.b64decode(encoded, validate=True)))
         if not metadata_uri:
             return None
-        metadata_bytes, _ = await self._download(metadata_uri, MAX_METADATA_BYTES)
+        metadata_bytes, _ = await self._download_uri(metadata_uri, MAX_METADATA_BYTES, "metadata")
         metadata = json.loads(metadata_bytes)
         return normalize_uri(image_uri_from_json(metadata))
 
@@ -196,11 +229,45 @@ class ImageResolver:
                 chunks.append(chunk)
             return b"".join(chunks), response
 
+    async def _download_uri(
+        self, raw_uri: str, limit: int, label: str
+    ) -> tuple[bytes, httpx.Response]:
+        candidates = download_candidates(raw_uri)
+        if not candidates:
+            raise ValueError("unsupported URI")
+        last_error: Exception | None = None
+        for url in candidates:
+            try:
+                content, response = await self._download(url, limit)
+            except httpx.HTTPStatusError as exc:
+                logger.warning(
+                    "%s download failed: gateway=%s status=%s final URL=%s",
+                    label,
+                    urlparse(url).netloc,
+                    exc.response.status_code,
+                    exc.response.url,
+                )
+                last_error = exc
+                continue
+            except httpx.HTTPError as exc:
+                logger.warning(
+                    "%s download failed: gateway=%s exception=%s",
+                    label,
+                    urlparse(url).netloc,
+                    type(exc).__name__,
+                )
+                last_error = exc
+                continue
+            logger.info("image gateway used=%s", response.url.host)
+            logger.info("image HTTP status=%s", response.status_code)
+            logger.info("image final URL=%s", response.url)
+            return content, response
+        if last_error:
+            raise last_error
+        raise ValueError("no downloadable URI candidate")
+
     async def _download_image(self, raw_uri: str, source: str) -> ResolvedImage | None:
-        url = normalize_uri(raw_uri)
-        if not url:
-            return None
-        content, response = await self._download(url, self.max_image_bytes)
+        content, response = await self._download_uri(raw_uri, self.max_image_bytes, "image")
         mime_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
         if not mime_type.startswith("image/") or not content:
             raise ValueError("response is not an image")

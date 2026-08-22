@@ -72,10 +72,11 @@ class TelegramClient:
     def caption(self, token: Token) -> str:
         twitter = x_url(token.twitter)
         x_line = f'<a href="{html.escape(twitter, quote=True)}">X</a>' if twitter else "X̶"
+        display_symbol = "$" + token.symbol.lstrip("$")
         return "\n".join([
             "🧠 <b>smarts detected</b>",
             "",
-            f"${html.escape(token.symbol)} - {html.escape(token.name)} - {compact_usd(token.market_cap)}",
+            f"{html.escape(display_symbol)} - {html.escape(token.name)} - {compact_usd(token.market_cap)}",
             "",
             x_line,
             "",

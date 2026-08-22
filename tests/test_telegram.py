@@ -58,6 +58,14 @@ def test_caption_contains_full_html_escaped_ca_and_missing_x_fallback():
     assert "X̶" in caption
 
 
+def test_caption_displays_ticker_with_exactly_one_leading_dollar():
+    tg = client()
+    for raw_symbol in ("SNEK", "$SNEK", "$$SNEK"):
+        caption = tg.caption(token(symbol=raw_symbol))
+        assert "$SNEK - Doge2 Caesar" in caption
+        assert "$$SNEK" not in caption
+
+
 def test_keyboard_has_no_ca_button_and_hides_missing_axiom_market():
     tg = client()
     keyboard = tg.keyboard(token())

@@ -82,6 +82,24 @@ async def test_pumpfun_image_uri_has_first_priority():
     assert image and image.source == "pumpfun" and image.content == PNG
 
 
+async def test_ipfs_image_retries_alternate_gateway_after_403():
+    attempts = []
+
+    def handler(request):
+        if request.url.host == "frontend-api-v3.pump.fun":
+            return response(request, json_body={"image_uri": "ipfs://pump-image"})
+        attempts.append(request.url.host)
+        if request.url.host == "ipfs.io":
+            return response(request, status=403, content=b"blocked", content_type="text/html")
+        if request.url.host == "gateway.pinata.cloud":
+            return response(request, content=PNG, content_type="image/png")
+        raise AssertionError(request.url)
+
+    image = await run_resolver(handler)
+    assert image and image.source == "pumpfun" and image.content == PNG
+    assert attempts == ["ipfs.io", "gateway.pinata.cloud"]
+
+
 async def test_pumpfun_metadata_uri_image_is_second_priority():
     def handler(request):
         if request.url.host == "frontend-api-v3.pump.fun":

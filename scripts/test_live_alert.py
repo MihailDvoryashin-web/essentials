@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import html
+import io
 import json
 import logging
 import os
@@ -12,6 +13,8 @@ import shlex
 from pathlib import Path
 from decimal import Decimal, InvalidOperation
 from typing import Any
+
+from PIL import Image
 
 from essentials.config import Settings
 from essentials.gmgn import GmgnError
@@ -48,8 +51,20 @@ def configured_emoji_ids(settings: Settings) -> dict[str, str]:
     return {name: value for name, value in values.items() if value is not None}
 
 
-def select_live_token(candidates: list[tuple[dict[str, Any], Token]]) -> tuple[dict[str, Any], Token] | None:
-    return candidates[0] if candidates else None
+def select_live_tokens(
+    candidates: list[tuple[dict[str, Any], Token]], limit: int = 3
+) -> list[tuple[dict[str, Any], Token]]:
+    selected: list[tuple[dict[str, Any], Token]] = []
+    seen_addresses: set[str] = set()
+    for candidate in candidates:
+        address = candidate[1].address
+        if address in seen_addresses:
+            continue
+        seen_addresses.add(address)
+        selected.append(candidate)
+        if len(selected) == limit:
+            break
+    return selected
 
 
 def decimal_value(value: Any) -> Decimal | None:
@@ -233,6 +248,11 @@ def verify_card(telegram: TelegramClient, token: Token) -> None:
         raise RuntimeError("Caption does not contain the missing-X fallback")
 
 
+def image_resolution(content: bytes) -> str:
+    with Image.open(io.BytesIO(content)) as image:
+        return f"{image.width}x{image.height}"
+
+
 async def send_live_alert() -> None:
     load_local_env()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
@@ -245,12 +265,10 @@ async def send_live_alert() -> None:
     # One un-retried raw request enables sequential diagnostics without touching production filters.
     rows = await fetch_raw_pump_rows(settings)
     candidates = diagnose_and_filter(rows)
-    selected = select_live_token(candidates)
-    if selected is None:
+    selected = select_live_tokens(candidates)
+    if not selected:
         print("No current token passes the Stage 1 prefilter.")
         return
-    raw_token, token = selected
-    print_selected_mapping(raw_token, token)
 
     telegram = TelegramClient(
         settings.telegram_bot_token,
@@ -260,24 +278,30 @@ async def send_live_alert() -> None:
         settings.max_retries,
         emoji_ids,
     )
-    verify_card(telegram, token)
     image_resolver = ImageResolver(settings.solana_rpc_url, settings.http_timeout_seconds)
 
     try:
-        image = await image_resolver.resolve(token)
-        message_id = await telegram.send_token(token, image)
+        for index, (raw_token, token) in enumerate(selected):
+            print_selected_mapping(raw_token, token)
+            verify_card(telegram, token)
+            image = await image_resolver.resolve(token)
+            message_id = await telegram.send_token(token, image)
+            resolution = image_resolution(image.content) if image else "none"
+            print(
+                f"{token.symbol} | {token.market_cap} | "
+                f"{image.source if image else 'fallback'} | {resolution} | "
+                f"X={'yes' if x_url(token.twitter) else 'no'}"
+            )
+            print(
+                f"Live alert sent: message_id={message_id}, "
+                f"thread_id={settings.telegram_alerts_thread_id}, "
+                f"method={'sendPhoto' if image else 'sendMessage'}, ca={token.address}"
+            )
+            if index + 1 < len(selected):
+                await asyncio.sleep(1)
     finally:
         await telegram.close()
         await image_resolver.close()
-
-    method = "sendPhoto" if image else "sendMessage"
-    print(
-        f"Live alert sent: message_id={message_id}, thread_id={settings.telegram_alerts_thread_id}, "
-        f"method={method}, ca={token.address}, "
-        f"image_source={image.source if image else 'fallback'}, "
-        f"image_bytes={len(image.content) if image else 0}, "
-        f"image_type={image.mime_type if image else 'none'}"
-    )
 
 
 if __name__ == "__main__":
