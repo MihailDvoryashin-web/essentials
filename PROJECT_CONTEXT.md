@@ -47,6 +47,9 @@ essentials/
 ├── pyproject.toml
 ├── README.md
 ├── .env.example
+├── AGENTS.md                 repository-wide development protocol
+├── CHANGELOG_AI.md           append-only AI change history
+├── CURRENT_STATE.md          concise current handoff snapshot
 └── PROJECT_CONTEXT.md
 ```
 
@@ -613,6 +616,31 @@ Critical unavailable data до Telegram не создаёт alert и не соз
 
 ## Recent Changes
 
+### 2026-08-24 — постоянная GitHub-backed project memory
+
+Изменение:
+
+- Добавлены repository-wide agent rules и краткий current-state handoff.
+- `CHANGELOG_AI.md` приведён к постоянному формату Task / Files changed / Logic changed / Tests.
+- GitHub `origin/main` закреплён как долговременный источник истории изменений.
+
+Файлы:
+
+- `AGENTS.md`
+- `CHANGELOG_AI.md`
+- `CURRENT_STATE.md`
+- `PROJECT_CONTEXT.md`
+
+Изменено:
+
+- После каждого code change обязательны обновление трёх memory-файлов, status/diff checks, task-scoped commit и push.
+- Production behavior не менялся.
+
+Проверка:
+
+- production tests не требуются для documentation-only change;
+- `git diff --check`: OK.
+
 ### 2026-08-24 — ticker и holders/smarts UI fix
 
 Изменение:
@@ -678,8 +706,9 @@ Critical unavailable data до Telegram не создаёт alert и не соз
 7. Не помечать изменение выполненным без подтверждения кодом и тестами.
 8. Не удалять исторические записи; новые записи добавлять выше старых внутри `Recent Changes`.
 9. Обновить `CHANGELOG_AI.md` записью с датой, задачей, файлами, изменённой логикой и результатом проверок.
-10. Проверить `git status`, добавить в commit только относящиеся к задаче файлы, создать commit формата `type: краткое описание` и выполнить push в configured GitHub remote.
-11. Не включать в commit `.env`, credentials или несвязанные пользовательские изменения dirty worktree.
+10. Обновить `CURRENT_STATE.md`: working behavior, latest changes, TODO и next task.
+11. Проверить `git status`, добавить в commit только относящиеся к задаче файлы, создать commit формата `type: краткое описание` и выполнить push в `origin/main`.
+12. Не включать в commit `.env`, credentials или несвязанные пользовательские изменения dirty worktree.
 
 GitHub является главным долговременным хранилищем истории. Если remote отсутствует, authentication не работает или push отклонён, это явно отмечается как `GitHub sync: FAILED`; локальные изменения и документация при этом не считаются отправленными в GitHub.
 
